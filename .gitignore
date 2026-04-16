@@ -1,0 +1,6 @@
+/target
+src-tauri/target/
+node_modules/
+signing/*.key
+signing/*.sec
+src-tauri/gen/
