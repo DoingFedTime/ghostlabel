@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GhostLabel</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg:#000000; --bg1:#0d0d0d; --bg2:#111111;
+    --border:#1e1e1e; --border2:#2a2a2a;
+    --red:#cc2a36; --red-dim:#7a1520;
+    --green:#4ade80; --green-dim:#1e5c35;
+    --gold:#e5a54b;
+    --text:#e0e0e0; --dim:#666;
+    --mono:'JetBrains Mono','Fira Code','Cascadia Code','Courier New',monospace;
+  }
+  body { font-family:var(--mono); background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden; font-size:13px; }
+  #header { background:var(--bg1); border-bottom:2px solid var(--red); padding:0 16px; height:44px; display:flex; align-items:center; gap:16px; flex-shrink:0; }
+  #logo { color:var(--red); font-size:16px; font-weight:700; letter-spacing:3px; text-transform:uppercase; }
+  #logo span { color:var(--dim); font-size:11px; letter-spacing:1px; }
+  #printer-status { display:flex; align-items:center; gap:8px; margin-left:auto; font-size:11px; color:var(--dim); }
+  .status-dot { width:8px; height:8px; border-radius:50%; background:var(--dim); flex-shrink:0; }
+  .status-dot.ok  { background:var(--green); box-shadow:0 0 6px var(--green); }
+  .status-dot.err { background:var(--red); }
+  .status-dot.warn{ background:var(--gold); }
+  #dry-run-toggle { display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--dim); font-size:11px; padding:4px 10px; border:1px solid var(--border2); border-radius:2px; transition:all 0.2s; user-select:none; }
+  #dry-run-toggle:hover { border-color:var(--gold); color:var(--gold); }
+  #dry-run-toggle.active { border-color:var(--gold); color:var(--gold); background:rgba(229,165,75,0.08); }
+  #body { display:flex; flex:1; overflow:hidden; }
+  #sidebar { width:280px; min-width:280px; background:var(--bg1); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto; }
+  .panel-label { color:var(--red); font-size:10px; letter-spacing:2px; text-transform:uppercase; padding:10px 14px 6px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+  .field-row { display:flex; align-items:center; padding:6px 14px; gap:6px; border-bottom:1px solid var(--border); }
+  .field-row label { color:var(--dim); font-size:11px; width:80px; flex-shrink:0; }
+  .field-row input[type=text],.field-row input[type=number],.field-row select { flex:1; background:var(--bg2); border:1px solid var(--border2); color:var(--text); font-family:var(--mono); font-size:12px; padding:4px 8px; border-radius:2px; outline:none; transition:border-color 0.2s; min-width:0; }
+  .field-row input:focus,.field-row select:focus { border-color:var(--red); }
+  .field-row input[type=checkbox] { accent-color:var(--red); width:14px; height:14px; cursor:pointer; }
+  .btn { font-family:var(--mono); font-size:12px; cursor:pointer; border-radius:2px; border:1px solid var(--border2); padding:6px 14px; background:transparent; color:var(--text); transition:all 0.2s; text-transform:uppercase; letter-spacing:1px; }
+  .btn:hover { border-color:var(--red); color:var(--red); }
+  .btn.primary { border-color:var(--red); color:var(--red); }
+  .btn.primary:hover { background:rgba(204,42,54,0.12); }
+  .btn.success { border-color:var(--green); color:var(--green); }
+  .btn.success:hover { background:rgba(74,222,128,0.08); }
+  .btn.disabled,.btn:disabled { opacity:0.3; cursor:not-allowed; pointer-events:none; }
+  .btn-row { display:flex; gap:8px; padding:10px 14px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  /* Preset buttons */
+  .preset-row { display:flex; gap:6px; padding:8px 14px; border-bottom:1px solid var(--border); }
+  .preset-btn { flex:1; font-family:var(--mono); font-size:10px; cursor:pointer; border-radius:2px; border:1px solid var(--border2); padding:5px 4px; background:transparent; color:var(--dim); transition:all 0.2s; text-transform:uppercase; letter-spacing:1px; text-align:center; }
+  .preset-btn:hover { border-color:var(--gold); color:var(--gold); }
+  .preset-btn.active { border-color:var(--gold); color:var(--gold); background:rgba(229,165,75,0.08); }
+  /* Advanced toggle */
+  .adv-toggle { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--border); cursor:pointer; color:var(--dim); font-size:10px; letter-spacing:1px; text-transform:uppercase; user-select:none; }
+  .adv-toggle:hover { color:var(--text); }
+  .adv-arrow { transition:transform 0.2s; }
+  .adv-arrow.open { transform:rotate(90deg); }
+  #adv-section { display:none; }
+  #adv-section.open { display:block; }
+  /* Info tooltip icon */
+  .tip { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:50%; border:1px solid #333; color:var(--dim); font-size:9px; cursor:help; flex-shrink:0; font-style:normal; }
+  .tip:hover { border-color:var(--gold); color:var(--gold); }
+  /* Tooltip popup - appended to body, position:fixed so sidebar overflow can't clip it */
+  .tooltip-popup { position:fixed; z-index:9999; width:240px; background:#1a1a1a; border:1px solid var(--border2); color:#ccc; font-size:11px; font-family:var(--mono); padding:8px 10px; border-radius:2px; line-height:1.6; pointer-events:none; white-space:normal; }
+  /* Device list */
+  #device-list { flex:1; overflow-y:auto; }
+  .device-item { padding:8px 14px; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.15s; }
+  .device-item:hover { background:var(--bg2); }
+  .device-item.selected { background:rgba(204,42,54,0.1); border-left:2px solid var(--red); }
+  .device-name { color:var(--text); font-size:12px; }
+  .device-mac  { color:var(--dim); font-size:10px; letter-spacing:1px; }
+  .device-tag  { color:var(--green); font-size:10px; }
+  #scan-status { padding:8px 14px; font-size:11px; color:var(--dim); border-bottom:1px solid var(--border); min-height:30px; }
+  .pulse { animation:pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
+  /* Main */
+  #main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  #drop-zone { margin:14px; border:1px dashed var(--border2); border-radius:2px; padding:14px 20px; display:flex; align-items:center; gap:12px; color:var(--dim); font-size:12px; cursor:pointer; transition:all 0.2s; flex-shrink:0; }
+  #drop-zone:hover,#drop-zone.dragover { border-color:var(--red); color:var(--red); background:rgba(204,42,54,0.04); }
+  #drop-zone .icon { font-size:22px; opacity:0.5; }
+  #queue-header { display:flex; align-items:center; padding:4px 14px; border-bottom:1px solid var(--border); gap:12px; flex-shrink:0; }
+  #queue-header .lbl { color:var(--dim); font-size:10px; letter-spacing:2px; text-transform:uppercase; flex:1; }
+  #queue { flex:1; overflow-y:auto; min-height:0; }
+  .queue-empty { padding:40px; text-align:center; color:var(--dim); font-size:12px; }
+  .job-row { display:flex; align-items:center; padding:8px 14px; border-bottom:1px solid var(--border); gap:10px; transition:background 0.15s; }
+  .job-row:hover { background:var(--bg1); }
+  .job-preview { width:36px; height:36px; border:1px solid var(--border2); border-radius:2px; background:var(--bg2); overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--dim); font-size:18px; }
+  .job-preview img { width:100%; height:100%; object-fit:contain; }
+  .job-info { flex:1; min-width:0; }
+  .job-name { font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text); }
+  .job-meta { font-size:10px; color:var(--dim); margin-top:2px; }
+  .job-page { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+  .job-page label { font-size:10px; color:var(--dim); }
+  .job-page input { width:42px; background:var(--bg2); border:1px solid var(--border2); color:var(--text); font-family:var(--mono); font-size:11px; padding:3px 6px; border-radius:2px; outline:none; }
+  .job-page input:focus { border-color:var(--red); }
+  .job-status { font-size:11px; width:70px; text-align:center; flex-shrink:0; }
+  .job-status.queued   { color:var(--dim); }
+  .job-status.printing { color:var(--gold); }
+  .job-status.done     { color:var(--green); }
+  .job-status.error    { color:var(--red); }
+  .job-status.dryrun   { color:var(--gold); }
+  .job-actions { display:flex; gap:6px; flex-shrink:0; }
+  .job-btn { background:transparent; border:1px solid var(--border2); color:var(--dim); font-family:var(--mono); font-size:10px; padding:3px 8px; border-radius:2px; cursor:pointer; transition:all 0.15s; }
+  .job-btn.print:hover  { border-color:var(--green); color:var(--green); }
+  .job-btn.dry:hover    { border-color:var(--gold); color:var(--gold); }
+  .job-btn.remove:hover { border-color:var(--red); color:var(--red); }
+  #queue-actions { display:flex; gap:8px; padding:10px 14px; border-top:1px solid var(--border); flex-shrink:0; }
+  #log-panel { height:140px; border-top:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
+  #log-header { padding:5px 14px; font-size:10px; color:var(--red); letter-spacing:2px; text-transform:uppercase; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  #log-header button { margin-left:auto; background:none; border:none; color:var(--dim); cursor:pointer; font-family:var(--mono); font-size:10px; letter-spacing:1px; }
+  #log-header button:hover { color:var(--text); }
+  #log { flex:1; overflow-y:auto; padding:6px 14px; font-size:11px; line-height:1.8; }
+  .log-line { display:flex; gap:10px; }
+  .log-time { color:var(--dim); flex-shrink:0; }
+  .log-msg.ok   { color:var(--green); }
+  .log-msg.err  { color:var(--red); }
+  .log-msg.warn { color:var(--gold); }
+  .log-msg.info { color:var(--text); }
+  ::-webkit-scrollbar { width:4px; height:4px; }
+  ::-webkit-scrollbar-track { background:var(--bg); }
+  ::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+  ::-webkit-scrollbar-thumb:hover { background:var(--dim); }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div id="logo">GHOST<span>LABEL</span></div>
+  <div id="printer-status">
+    <div class="status-dot" id="conn-dot"></div>
+    <span id="conn-label">NOT CONFIGURED</span>
+  </div>
+  <div id="dry-run-toggle">
+    <span>○</span> DRY RUN
+  </div>
+</div>
+
+<div id="body">
+  <div id="sidebar">
+    <div class="panel-label">PRINTER</div>
+
+    <div class="field-row">
+      <label>PROFILE</label>
+      <select id="profile-select" style="flex:1"></select>
+    </div>
+    <div class="field-row">
+      <label>MAC</label>
+      <input type="text" id="f-mac" placeholder="AA:BB:CC:DD:EE:FF" maxlength="17">
+      <span class="tip" data-tip="Bluetooth MAC address of your printer. Pair it in System Settings → Bluetooth first, then click SCAN below to find it automatically.">?</span>
+    </div>
+    <div class="field-row">
+      <label>CHANNEL</label>
+      <input type="number" id="f-channel" min="1" max="30">
+      <span class="tip" data-tip="RFCOMM channel. Almost always 1. Try 2 or 3 if connection fails.">?</span>
+    </div>
+    <div class="field-row">
+      <label>DPI</label>
+      <select id="f-dpi"><option value="203">203</option><option value="300">300</option></select>
+      <span class="tip" data-tip="Native print resolution of your printer head. Most budget label printers are 203 DPI. Some premium models are 300 DPI. Wrong setting = stretched or compressed output.">?</span>
+    </div>
+    <div class="field-row">
+      <label>WIDTH PX</label>
+      <input type="number" id="f-width" min="200" max="2000">
+      <span class="tip" data-tip="Maximum printable width in pixels at native DPI. KNAON Y813BT = 832. Wider printers may be 1344 or 2400. Check your printer spec sheet.">?</span>
+    </div>
+    <div class="field-row">
+      <label>THRESHOLD</label>
+      <input type="number" id="f-threshold" min="0" max="255">
+      <span class="tip" data-tip="Darkness cutoff (0-255). Pixels darker than this value print as black dots. Higher = more dots printed = darker label. Default 160. Raise to 180+ for faint output, lower to 130 if too dark/blurry.">?</span>
+    </div>
+    <div class="field-row">
+      <label>DITHERING</label>
+      <input type="checkbox" id="f-dither">
+      <span class="tip" data-tip="Floyd-Steinberg error diffusion. Converts grayscale gradients to black/white dot patterns that simulate shading. Good for photos. Leave OFF for barcode/text-only labels - it adds noise to clean edges.">?</span>
+    </div>
+
+    <!-- Quick presets -->
+    <div class="preset-row" id="preset-row">
+      <button class="preset-btn" id="preset-high"  onclick="applyPreset('high')">HIGH QUALITY</button>
+      <button class="preset-btn" id="preset-bal"   onclick="applyPreset('balanced')">BALANCED</button>
+      <button class="preset-btn" id="preset-fast"  onclick="applyPreset('fast')">FAST</button>
+    </div>
+
+    <!-- Advanced toggle -->
+    <div class="adv-toggle" id="adv-toggle" onclick="toggleAdv()">
+      <span class="adv-arrow" id="adv-arrow">▶</span> ADVANCED SETTINGS
+    </div>
+    <div id="adv-section">
+      <div class="field-row">
+        <label>RENDER SCALE</label>
+        <input type="number" id="f-rscale" min="1" max="4">
+        <span class="tip" data-tip="PDF is rendered at DPI × this value, then downsampled to print width. 2 = 2× supersampling (sharp barcodes, recommended). 3 = even sharper but 3× slower. 1 = fastest, lower quality.">?</span>
+      </div>
+      <div class="field-row">
+        <label>SHARPEN</label>
+        <input type="number" id="f-sharpen" min="0" max="2" step="0.1">
+        <span class="tip" data-tip="Unsharp mask strength (0.0-2.0). Sharpens letter and barcode edges before thresholding. 0.7 = safe default. 0.0 = off. Above 1.2 causes white halos inside thick letters.">?</span>
+      </div>
+      <div class="field-row">
+        <label>SLICE LINES</label>
+        <input type="number" id="f-slice-lines" min="8" max="512">
+        <span class="tip" data-tip="Lines of bitmap sent per Bluetooth packet. Smaller = more frequent cooling pauses for the thermal head. 48 = default (~6mm at 203 DPI). Lower to 24 if printer pauses mid-label.">?</span>
+      </div>
+      <div class="field-row">
+        <label>SLICE DELAY</label>
+        <input type="number" id="f-slice-delay" min="0" max="5000">
+        <span class="tip" data-tip="Milliseconds to wait between slices. Increase if the printer makes clicking/stuttering sounds mid-print. Default 80ms. 0 = no delay (may cause head overheating on long labels).">?</span>
+      </div>
+      <div class="field-row">
+        <label>HEAT TIME</label>
+        <input type="number" id="f-heat-time" min="0" max="255">
+        <span class="tip" data-tip="ESC 7 heating time (0-255). Higher = more heat per dot = darker print. Set to 0 to skip the ESC 7 command entirely if your printer ignores it. Default 255 (maximum). Not all firmware versions support this.">?</span>
+      </div>
+      <div class="field-row">
+        <label>HEAT DOTS</label>
+        <input type="number" id="f-heat-dots" min="0" max="255">
+        <span class="tip" data-tip="ESC 7 max heating dots (0-255). Controls how many dots fire per heating cycle. 15 = typical for narrow (80mm) printers. Raise to 255 for wider printers if print is uneven.">?</span>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn primary" id="btn-save">SAVE</button>
+      <button class="btn" id="btn-test">TEST CONN</button>
+    </div>
+
+    <div class="panel-label" style="margin-top:4px;">BLUETOOTH</div>
+    <div id="scan-status">Ready.</div>
+    <div class="btn-row">
+      <button class="btn" id="btn-scan">SCAN (8s)</button>
+      <button class="btn" id="btn-refresh">REFRESH</button>
+    </div>
+    <div id="device-list"></div>
+  </div>
+
+  <div id="main">
+    <div id="drop-zone">
+      <span class="icon">📄</span>
+      <span>DROP PDF FILES HERE &nbsp;/&nbsp; CLICK TO BROWSE</span>
+    </div>
+    <div id="queue-header">
+      <span class="lbl">PRINT QUEUE</span>
+      <button class="btn" id="btn-print-all">PRINT ALL</button>
+      <button class="btn" id="btn-clear">CLEAR</button>
+    </div>
+    <div id="queue"></div>
+    <div id="queue-actions">
+      <button class="btn success" id="btn-print-all2">PRINT ALL</button>
+      <button class="btn" id="btn-dry-all">DRY RUN ALL</button>
+      <button class="btn" id="btn-clear2" style="margin-left:auto">CLEAR QUEUE</button>
+    </div>
+    <div id="log-panel">
+      <div id="log-header">LOG <button id="btn-clear-log">CLEAR</button></div>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(async function() {
+  const { invoke } = window.__TAURI__.core;
+  const { listen }  = window.__TAURI__.event;
+  const { open: dialogOpen } = window.__TAURI__.dialog;
+
+  let config = null;
+  let queue  = [];
+  let dryRun = false;
+  let jobSerial = 0;
+
+  const PRESETS = {
+    high:     { render_scale:3, sharpen:0.8, threshold:165, slice_lines:32, slice_delay_ms:120, heating_time:255, heating_dots:15 },
+    balanced: { render_scale:2, sharpen:0.7, threshold:160, slice_lines:48, slice_delay_ms:80,  heating_time:255, heating_dots:15 },
+    fast:     { render_scale:1, sharpen:0.3, threshold:150, slice_lines:64, slice_delay_ms:40,  heating_time:200, heating_dots:10 },
+  };
+
+  window.applyPreset = function(name) {
+    const p = PRESETS[name];
+    if (!p) return;
+    const profile = config.profiles[config.active_profile];
+    Object.assign(profile, p);
+    renderConfig();
+    log('Preset applied: ' + name.toUpperCase(), 'warn');
+    updatePresetHighlight();
+  };
+
+  function updatePresetHighlight() {
+    const p = config.profiles[config.active_profile];
+    ['high','balanced','fast'].forEach(name => {
+      const preset = PRESETS[name];
+      const match = preset.render_scale === p.render_scale
+        && Math.abs(preset.sharpen - p.sharpen) < 0.01
+        && preset.threshold === p.threshold
+        && preset.slice_lines === p.slice_lines
+        && preset.slice_delay_ms === p.slice_delay_ms
+        && preset.heating_time === p.heating_time
+        && preset.heating_dots === p.heating_dots;
+      const btn = document.getElementById('preset-' + (name === 'balanced' ? 'bal' : name));
+      if (btn) btn.classList.toggle('active', match);
+    });
+  }
+
+  window.toggleAdv = function() {
+    const sec = document.getElementById('adv-section');
+    const arrow = document.getElementById('adv-arrow');
+    const open = sec.classList.toggle('open');
+    arrow.classList.toggle('open', open);
+  };
+
+  document.getElementById('btn-save').onclick       = saveConfig;
+  document.getElementById('btn-test').onclick       = testConnection;
+  document.getElementById('btn-scan').onclick       = startScan;
+  document.getElementById('btn-refresh').onclick    = loadDevices;
+  document.getElementById('btn-print-all').onclick  = printAll;
+  document.getElementById('btn-print-all2').onclick = printAll;
+  document.getElementById('btn-dry-all').onclick    = dryRunAll;
+  document.getElementById('btn-clear').onclick      = clearQueue;
+  document.getElementById('btn-clear2').onclick     = clearQueue;
+  document.getElementById('btn-clear-log').onclick  = () => { document.getElementById('log').textContent = ''; };
+  document.getElementById('dry-run-toggle').onclick = toggleDryRun;
+  document.getElementById('drop-zone').onclick      = openFiles;
+
+  let activeTooltip = null;
+  document.querySelectorAll('.tip').forEach(tip => {
+    tip.addEventListener('mouseenter', () => {
+      const text = tip.dataset.tip;
+      if (!text) return;
+      activeTooltip = document.createElement('div');
+      activeTooltip.className = 'tooltip-popup';
+      activeTooltip.textContent = text;
+      document.body.appendChild(activeTooltip);
+      const rect = tip.getBoundingClientRect();
+      const TW = 240;
+      let left = rect.right + 10;
+      if (left + TW > window.innerWidth - 8) left = rect.left - TW - 10;
+      activeTooltip.style.left = Math.max(8, left) + 'px';
+      activeTooltip.style.top  = Math.max(8, rect.top - 4) + 'px';
+    });
+    tip.addEventListener('mouseleave', () => {
+      if (activeTooltip) { activeTooltip.remove(); activeTooltip = null; }
+    });
+  });
+
+  const dropZone = document.getElementById('drop-zone');
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', async e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.pdf'));
+    for (const f of files) await addFile(f.path || f.name);
+  });
+
+  function renderConfig() {
+    const profile = config.profiles[config.active_profile];
+    const sel = document.getElementById('profile-select');
+    sel.textContent = '';
+    config.profiles.forEach((p, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = p.name;
+      opt.selected = i === config.active_profile;
+      sel.appendChild(opt);
+    });
+    document.getElementById('f-mac').value         = profile.bt_mac;
+    document.getElementById('f-channel').value     = profile.bt_channel;
+    document.getElementById('f-dpi').value         = String(profile.dpi);
+    document.getElementById('f-width').value       = profile.max_width_px;
+    document.getElementById('f-threshold').value   = profile.threshold;
+    document.getElementById('f-dither').checked    = profile.use_dithering;
+    document.getElementById('f-rscale').value      = profile.render_scale   ?? 2;
+    document.getElementById('f-sharpen').value     = profile.sharpen        ?? 0.7;
+    document.getElementById('f-slice-lines').value = profile.slice_lines    ?? 48;
+    document.getElementById('f-slice-delay').value = profile.slice_delay_ms ?? 80;
+    document.getElementById('f-heat-time').value   = profile.heating_time   ?? 255;
+    document.getElementById('f-heat-dots').value   = profile.heating_dots   ?? 15;
+    updateStatus();
+    updatePresetHighlight();
+  }
+
+  document.getElementById('profile-select').onchange = function() {
+    config.active_profile = parseInt(this.value);
+    renderConfig();
+  };
+
+  function readFields() {
+    const p = config.profiles[config.active_profile];
+    p.bt_mac         = document.getElementById('f-mac').value.toUpperCase().trim();
+    p.bt_channel     = parseInt(document.getElementById('f-channel').value);
+    p.dpi            = parseInt(document.getElementById('f-dpi').value);
+    p.max_width_px   = parseInt(document.getElementById('f-width').value);
+    p.threshold      = parseInt(document.getElementById('f-threshold').value);
+    p.use_dithering  = document.getElementById('f-dither').checked;
+    p.render_scale   = parseInt(document.getElementById('f-rscale').value)   || 2;
+    p.sharpen        = parseFloat(document.getElementById('f-sharpen').value) || 0.0;
+    p.slice_lines    = parseInt(document.getElementById('f-slice-lines').value) || 48;
+    p.slice_delay_ms = parseInt(document.getElementById('f-slice-delay').value) || 80;
+    p.heating_time   = parseInt(document.getElementById('f-heat-time').value);
+    p.heating_dots   = parseInt(document.getElementById('f-heat-dots').value);
+  }
+
+  async function saveConfig() {
+    readFields();
+    await invoke('save_config', { config });
+    updateStatus();
+    updatePresetHighlight();
+    log('Config saved.', 'ok');
+  }
+
+  function updateStatus() {
+    const p = config.profiles[config.active_profile];
+    const dot = document.getElementById('conn-dot');
+    const lbl = document.getElementById('conn-label');
+    const bad = !p.bt_mac || p.bt_mac === 'AA:BB:CC:DD:EE:FF';
+    dot.className = 'status-dot ' + (bad ? 'warn' : 'ok');
+    lbl.textContent = bad ? 'NOT CONFIGURED' : p.bt_mac;
+  }
+
+  async function testConnection() {
+    readFields();
+    const p = config.profiles[config.active_profile];
+    log('Testing connection to ' + p.bt_mac + ' ch' + p.bt_channel + '…', 'info');
+    const btn = document.getElementById('btn-test');
+    btn.disabled = true;
+    try {
+      const msg = await invoke('test_connection', { mac: p.bt_mac, channel: p.bt_channel });
+      log(msg, 'ok');
+      document.getElementById('conn-dot').className = 'status-dot ok';
+    } catch(e) {
+      log(String(e), 'err');
+      document.getElementById('conn-dot').className = 'status-dot err';
+    }
+    btn.disabled = false;
+  }
+
+  async function loadDevices() {
+    const devices = await invoke('list_devices');
+    renderDevices(devices, false);
+  }
+
+  function renderDevices(devices, scanning) {
+    const el = document.getElementById('device-list');
+    const status = document.getElementById('scan-status');
+    const p = config.profiles[config.active_profile];
+
+    status.textContent = '';
+    if (scanning) {
+      const s = document.createElement('span');
+      s.className = 'pulse';
+      s.textContent = '● SCANNING…';
+      status.appendChild(s);
+    } else {
+      status.textContent = devices.length + ' device' + (devices.length !== 1 ? 's' : '') + ' found.';
+    }
+
+    el.textContent = '';
+    if (!devices.length) {
+      const msg = document.createElement('div');
+      msg.style.cssText = 'padding:10px 14px;color:#444;font-size:11px;';
+      msg.textContent = 'No devices found.';
+      el.appendChild(msg);
+      return;
+    }
+
+    devices.forEach(d => {
+      const item = document.createElement('div');
+      item.className = 'device-item' + (d.mac === p.bt_mac ? ' selected' : '');
+
+      const name = document.createElement('div');
+      name.className = 'device-name';
+      name.textContent = d.name || 'Unknown';
+
+      const mac = document.createElement('div');
+      mac.className = 'device-mac';
+      mac.textContent = d.mac;
+
+      item.appendChild(name);
+      item.appendChild(mac);
+
+      if (d.looks_like_printer) {
+        const tag = document.createElement('div');
+        tag.className = 'device-tag';
+        tag.textContent = '● PRINTER';
+        item.appendChild(tag);
+      }
+
+      item.onclick = () => {
+        config.profiles[config.active_profile].bt_mac = d.mac;
+        document.getElementById('f-mac').value = d.mac;
+        updateStatus();
+        log('Selected ' + d.mac, 'info');
+        renderDevices(devices, false);
+      };
+
+      el.appendChild(item);
+    });
+  }
+
+  async function startScan() {
+    log('Starting Bluetooth scan (8s)…', 'info');
+    const btn = document.getElementById('btn-scan');
+    btn.disabled = true;
+    await invoke('scan_devices', { timeoutSecs: 8 });
+    setTimeout(() => { btn.disabled = false; }, 9000);
+  }
+
+  async function openFiles() {
+    const result = await dialogOpen({
+      multiple: true,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }]
+    });
+    if (!result) return;
+    const paths = Array.isArray(result) ? result : [result];
+    for (const p of paths) await addFile(p);
+  }
+
+  async function addFile(path, savedPage) {
+    const pageCount = await invoke('pdf_page_count', { path });
+    const page = savedPage || 1;
+    const id = ++jobSerial;
+    const job = { id, path, page, pageCount, status: 'queued', previewB64: null };
+    queue.push(job);
+    renderQueue();
+    persistQueue();
+    invoke('render_preview', { path, page })
+      .then(b64 => { job.previewB64 = b64; renderQueueItem(job); })
+      .catch(() => {});
+  }
+
+  function renderQueue() {
+    const el = document.getElementById('queue');
+    el.textContent = '';
+    if (!queue.length) {
+      const empty = document.createElement('div');
+      empty.className = 'queue-empty';
+      empty.textContent = 'No files queued. Drop a PDF to start.';
+      el.appendChild(empty);
+      return;
+    }
+    queue.forEach(job => el.appendChild(buildJobRow(job)));
+  }
+
+  function renderQueueItem(job) {
+    const existing = document.getElementById('job-' + job.id);
+    if (existing) {
+      const replacement = buildJobRow(job);
+      existing.replaceWith(replacement);
+    }
+  }
+
+  function buildJobRow(job) {
+    const row = document.createElement('div');
+    row.className = 'job-row';
+    row.id = 'job-' + job.id;
+
+    const preview = document.createElement('div');
+    preview.className = 'job-preview';
+    if (job.previewB64) {
+      const img = document.createElement('img');
+      img.src = 'data:image/png;base64,' + job.previewB64;
+      img.alt = 'preview';
+      preview.appendChild(img);
+    } else {
+      preview.textContent = '📄';
+    }
+
+    const info = document.createElement('div');
+    info.className = 'job-info';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'job-name';
+    nameEl.textContent = job.path.split('/').pop();
+    nameEl.title = job.path;
+    const metaEl = document.createElement('div');
+    metaEl.className = 'job-meta';
+    metaEl.textContent = job.pageCount + ' page' + (job.pageCount !== 1 ? 's' : '');
+    info.appendChild(nameEl);
+    info.appendChild(metaEl);
+
+    const pageSel = document.createElement('div');
+    pageSel.className = 'job-page';
+    const pgLabel = document.createElement('label');
+    pgLabel.textContent = 'PG';
+    const pgInput = document.createElement('input');
+    pgInput.type = 'number';
+    pgInput.value = job.page;
+    pgInput.min = 1;
+    pgInput.max = job.pageCount;
+    pgInput.onchange = () => {
+      job.page = parseInt(pgInput.value) || 1;
+      persistQueue();
+      invoke('render_preview', { path: job.path, page: job.page })
+        .then(b64 => { job.previewB64 = b64; renderQueueItem(job); })
+        .catch(() => {});
+    };
+    pageSel.appendChild(pgLabel);
+    pageSel.appendChild(pgInput);
+
+    const statusLabels = { queued:'-', printing:'⟳', done:'✓ DONE', error:'✗ ERR', dryrun:'○ DRY' };
+    const statusEl = document.createElement('div');
+    statusEl.className = 'job-status ' + job.status;
+    statusEl.textContent = statusLabels[job.status] || '-';
+
+    const actions = document.createElement('div');
+    actions.className = 'job-actions';
+
+    const btnPrint = document.createElement('button');
+    btnPrint.className = 'job-btn print';
+    btnPrint.textContent = 'PRINT';
+    btnPrint.onclick = () => execPrint(job, false);
+
+    const btnDry = document.createElement('button');
+    btnDry.className = 'job-btn dry';
+    btnDry.textContent = 'DRY';
+    btnDry.onclick = () => execPrint(job, true);
+
+    const btnRm = document.createElement('button');
+    btnRm.className = 'job-btn remove';
+    btnRm.textContent = '✕';
+    btnRm.onclick = () => {
+      queue = queue.filter(j => j.id !== job.id);
+      renderQueue();
+      persistQueue();
+    };
+
+    actions.appendChild(btnPrint);
+    actions.appendChild(btnDry);
+    actions.appendChild(btnRm);
+
+    row.appendChild(preview);
+    row.appendChild(info);
+    row.appendChild(pageSel);
+    row.appendChild(statusEl);
+    row.appendChild(actions);
+    return row;
+  }
+
+  async function execPrint(job, forceDry) {
+    const dr = forceDry || dryRun;
+    job.status = 'printing';
+    renderQueueItem(job);
+    log((dr ? '[DRY] ' : '') + job.path.split('/').pop() + ' p' + job.page + '…', 'info');
+    try {
+      await invoke('print_pdf', { id: job.id, path: job.path, page: job.page, dryRun: dr });
+    } catch(e) {
+      if (job.status === 'printing') { job.status = 'error'; renderQueueItem(job); }
+    }
+  }
+
+  async function printAll() {
+    for (const job of queue) {
+      if (job.status !== 'done') await execPrint(job, false);
+    }
+  }
+
+  async function dryRunAll() {
+    for (const job of queue) await execPrint(job, true);
+  }
+
+  function clearQueue() {
+    queue = [];
+    renderQueue();
+    persistQueue();
+  }
+
+  function persistQueue() {
+    invoke('save_queue', { queue: queue.map(j => ({ path: j.path, page: j.page })) }).catch(()=>{});
+  }
+
+  function toggleDryRun() {
+    dryRun = !dryRun;
+    document.getElementById('dry-run-toggle').classList.toggle('active', dryRun);
+    log(dryRun ? 'Dry-run ON - no Bluetooth output.' : 'Dry-run OFF.', 'warn');
+  }
+
+  function log(msg, level) {
+    const el = document.getElementById('log');
+    const now = new Date().toTimeString().slice(0, 8);
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'log-time';
+    timeSpan.textContent = now;
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'log-msg ' + (level || 'info');
+    msgSpan.textContent = msg;
+    line.appendChild(timeSpan);
+    line.appendChild(msgSpan);
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  await listen('scan-update', ({ payload }) => {
+    renderDevices(payload.devices, payload.scanning);
+  });
+
+  await listen('print-event', ({ payload }) => {
+    const job = queue.find(j => j.id === payload.id);
+    if (job) {
+      job.status = payload.status;
+      renderQueueItem(job);
+    }
+    const level = payload.status === 'done' ? 'ok' : payload.status === 'error' ? 'err' : payload.status === 'dryrun' ? 'warn' : 'info';
+    log(payload.message, level);
+  });
+
+  try {
+    config = await invoke('get_config');
+    renderConfig();
+    const saved = await invoke('load_queue');
+    for (const e of saved) await addFile(e.path, e.page);
+    await loadDevices();
+    log('GhostLabel ready.', 'ok');
+  } catch(e) {
+    const errDiv = document.createElement('div');
+    errDiv.style.cssText = 'color:red;padding:20px;font-family:monospace;';
+    errDiv.textContent = 'Init error: ' + String(e);
+    document.body.appendChild(errDiv);
+  }
+})();
+</script>
+</body>
+</html>
