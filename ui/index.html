@@ -174,13 +174,13 @@
 
     <!-- Quick presets -->
     <div class="preset-row" id="preset-row">
-      <button class="preset-btn" id="preset-high"  onclick="applyPreset('high')">HIGH QUALITY</button>
-      <button class="preset-btn" id="preset-bal"   onclick="applyPreset('balanced')">BALANCED</button>
-      <button class="preset-btn" id="preset-fast"  onclick="applyPreset('fast')">FAST</button>
+      <button class="preset-btn" id="preset-high">HIGH QUALITY</button>
+      <button class="preset-btn" id="preset-bal">BALANCED</button>
+      <button class="preset-btn" id="preset-fast">FAST</button>
     </div>
 
     <!-- Advanced toggle -->
-    <div class="adv-toggle" id="adv-toggle" onclick="toggleAdv()">
+    <div class="adv-toggle" id="adv-toggle">
       <span class="adv-arrow" id="adv-arrow">▶</span> ADVANCED SETTINGS
     </div>
     <div id="adv-section">
@@ -315,6 +315,10 @@
   document.getElementById('btn-clear-log').onclick  = () => { document.getElementById('log').textContent = ''; };
   document.getElementById('dry-run-toggle').onclick = toggleDryRun;
   document.getElementById('drop-zone').onclick      = openFiles;
+  document.getElementById('preset-high').onclick   = () => window.applyPreset('high');
+  document.getElementById('preset-bal').onclick    = () => window.applyPreset('balanced');
+  document.getElementById('preset-fast').onclick   = () => window.applyPreset('fast');
+  document.getElementById('adv-toggle').onclick    = () => window.toggleAdv();
 
   let activeTooltip = null;
   document.querySelectorAll('.tip').forEach(tip => {
